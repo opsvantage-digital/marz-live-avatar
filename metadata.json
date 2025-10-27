@@ -1,0 +1,8 @@
+{
+  "name": "Marz - Emotionally Intelligent AI",
+  "description": "Interact with Marz, your emotionally intelligent AI companion, through a real-time video-chat interface.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}

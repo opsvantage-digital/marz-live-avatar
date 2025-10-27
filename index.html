@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Marz - Emotionally Intelligent AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @keyframes breathing {
+        0%, 100% {
+          transform: scale(1);
+          box-shadow: 0 0 20px rgba(192, 132, 252, 0.3);
+        }
+        50% {
+          transform: scale(1.03);
+          box-shadow: 0 0 35px rgba(192, 132, 252, 0.5);
+        }
+      }
+      .animate-breathing {
+        animation: breathing 5s ease-in-out infinite;
+      }
+      @keyframes talking {
+        0%, 100% {
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+        }
+        50% {
+            box-shadow: 0 0 40px rgba(74, 222, 128, 1), 0 0 60px rgba(74, 222, 128, 0.5);
+        }
+      }
+      .animate-talking {
+        animation: talking 1.5s ease-in-out infinite;
+      }
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        z-index: 40;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+      }
+      .modal-overlay.open {
+        opacity: 1;
+      }
+      .modal-container {
+        position: fixed;
+        z-index: 50;
+        opacity: 0;
+        transform: scale(0.95);
+        transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+      }
+      .modal-container.open {
+        opacity: 1;
+        transform: scale(1);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-900 text-white">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
