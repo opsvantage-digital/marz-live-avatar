@@ -24,3 +24,4 @@ View your app in AI Studio: https://ai.studio/apps/drive/1mR9QjwnK1bnB8Fw_dFSyvn
 - Mic and camera permissions are required for real-time voice and video. If you deny permissions, the app will prompt you to allow them.
 - Voice can be toggled on/off in the UI (or press V). Audio is always requested from the server for reliability; when voice is off, playback is muted locally.
 - You can switch Avatar theme (Light/Dark) in Settings to immediately see a visual change.
+ - You can choose your microphone and camera in Settings. Click Refresh Devices to pick new devices, then Apply to switch during a live session.

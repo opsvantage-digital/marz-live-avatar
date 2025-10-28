@@ -46,6 +46,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const frameIntervalRef = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -57,6 +58,22 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   const hasAudioInTurnRef = useRef(false);
   const isMutedRef = useRef(isMuted);
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+
+  // Devices
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string>('default');
+  const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string>('default');
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setAudioDevices(devices.filter(d => d.kind === 'audioinput'));
+      setVideoDevices(devices.filter(d => d.kind === 'videoinput'));
+    } catch (e) {
+      console.warn('Could not enumerate devices:', e);
+    }
+  }, []);
 
   // --- Core Logic ---
 
@@ -102,7 +119,20 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     setEmotionalState('Curious');
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedAudioDeviceId && selectedAudioDeviceId !== 'default' ? { exact: selectedAudioDeviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } as MediaTrackConstraints,
+        video: {
+          deviceId: selectedVideoDeviceId && selectedVideoDeviceId !== 'default' ? { exact: selectedVideoDeviceId } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        } as MediaTrackConstraints,
+      });
       mediaStreamRef.current = stream;
       if(videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -136,6 +166,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
           onopen: () => {
             setConnectionState('connected');
             const source = inputAudioContextRef.current!.createMediaStreamSource(stream);
+            mediaSourceRef.current = source;
             const scriptProcessor = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
             scriptProcessorRef.current = scriptProcessor;
 
@@ -271,7 +302,51 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       alert('Could not get microphone/camera access. Please allow permissions and try again.');
       stopConversation('error');
     }
-  }, [stopConversation, isVoiceActive, voiceStyle]);
+  }, [stopConversation, isVoiceActive, voiceStyle, selectedAudioDeviceId, selectedVideoDeviceId]);
+
+  const applySelectedDevices = useCallback(async () => {
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedAudioDeviceId && selectedAudioDeviceId !== 'default' ? { exact: selectedAudioDeviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } as MediaTrackConstraints,
+        video: {
+          deviceId: selectedVideoDeviceId && selectedVideoDeviceId !== 'default' ? { exact: selectedVideoDeviceId } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        } as MediaTrackConstraints,
+      });
+
+      // Replace media stream
+      const oldStream = mediaStreamRef.current;
+      mediaStreamRef.current = newStream;
+
+      // Update video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = newStream;
+      }
+
+      // Rewire audio graph to new stream
+      if (inputAudioContextRef.current && scriptProcessorRef.current) {
+        try { mediaSourceRef.current?.disconnect(); } catch {}
+        const newSource = inputAudioContextRef.current.createMediaStreamSource(newStream);
+        mediaSourceRef.current = newSource;
+        newSource.connect(scriptProcessorRef.current);
+      }
+
+      // Stop old tracks to free devices
+      if (oldStream) {
+        oldStream.getTracks().forEach(t => t.stop());
+      }
+    } catch (e) {
+      console.error('Failed to apply selected devices:', e);
+      alert('Could not switch devices. Please ensure permissions are granted.');
+    }
+  }, [selectedAudioDeviceId, selectedVideoDeviceId]);
 
   const handleStartChat = () => {
     setModalView('chat');
@@ -303,6 +378,12 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, handleClose]);
+
+  // When modal opens, try to list devices (may require permission granted)
+  useEffect(() => {
+    if (!isOpen) return;
+    refreshDevices();
+  }, [isOpen, refreshDevices]);
 
   useEffect(() => {
     const node = modalRef.current;
@@ -413,6 +494,30 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
                       <option value="Puck">Cinematic (Puck)</option>
                   </select>
               </div>
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <label htmlFor="mic-device" className="block text-gray-300 mb-2">Microphone</label>
+            <select id="mic-device" value={selectedAudioDeviceId} onChange={(e) => setSelectedAudioDeviceId(e.target.value)} className="w-full p-2 bg-slate-900 border border-slate-700 rounded-md">
+              <option value="default">Default</option>
+              {audioDevices.map(d => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label || `Mic (${d.deviceId.slice(0,6)}...)`}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="cam-device" className="block text-gray-300 mb-2">Camera</label>
+            <select id="cam-device" value={selectedVideoDeviceId} onChange={(e) => setSelectedVideoDeviceId(e.target.value)} className="w-full p-2 bg-slate-900 border border-slate-700 rounded-md">
+              <option value="default">Default</option>
+              {videoDevices.map(d => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera (${d.deviceId.slice(0,6)}...)`}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={refreshDevices} className="px-3 py-2 bg-slate-800 rounded-md border border-slate-700 hover:bg-slate-700">Refresh Devices</button>
+            <button onClick={applySelectedDevices} className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md">Apply</button>
+          </div>
+        </div>
                <div>
                   <label className="block text-gray-300 mb-2">Voice Activation (Shortcut: V)</label>
                   <div className="flex space-x-2 rounded-lg bg-slate-900 p-1">
