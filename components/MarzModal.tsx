@@ -5,7 +5,7 @@ import TranscriptionDisplay from './TranscriptionDisplay';
 import { decode, decodeAudioData, createBlob } from '../utils/audio';
 import { blobToBase64 } from '../utils/video';
 import type { ConnectionState, TranscriptionEntry, ModalView, EmotionalState, VoiceStyle } from '../types';
-import { ArrowLeftIcon, ChatIcon, CloseIcon, EndCallIcon, LegacyIcon, MicOffIcon, MicOnIcon, SettingsIcon, VoiceOffIcon, VoiceOnIcon, WalletIcon } from './icons';
+import { ArrowLeftIcon, ChatIcon, CloseIcon, EndCallIcon, LegacyIcon, MicOffIcon, MicOnIcon, SettingsIcon, VoiceOffIcon, VoiceOnIcon, WalletIcon, VideoOnIcon, VideoOffIcon, PlayIcon, PauseIcon } from './icons';
 
 interface MarzModalProps {
   isOpen: boolean;
@@ -35,6 +35,9 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   const [isModelTalking, setIsModelTalking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVoiceActive, setIsVoiceActive] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [chatPaused, setChatPaused] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
 
   // Settings
   const [avatarTheme, setAvatarTheme] = useState<'light' | 'dark'>('dark');
@@ -171,8 +174,18 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
             scriptProcessorRef.current = scriptProcessor;
 
             scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-              if (isMutedRef.current) return;
               const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+              // Compute RMS for mic level meter
+              let sum = 0;
+              for (let i = 0; i < inputData.length; i++) {
+                const v = inputData[i];
+                sum += v * v;
+              }
+              const rms = Math.sqrt(sum / inputData.length);
+              // Smooth the meter a bit
+              setMicLevel(prev => prev * 0.7 + rms * 0.3);
+
+              if (isMutedRef.current) return;
               const pcmBlob = createBlob(inputData);
               if (sessionPromiseRef.current) {
                 sessionPromiseRef.current.then((session) => {
@@ -183,10 +196,10 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputAudioContextRef.current!.destination);
 
-            // Start sending video frames
+      // Start sending video frames (if enabled)
             const videoEl = videoRef.current;
             const canvasEl = canvasRef.current;
-            if(videoEl && canvasEl) {
+      if(videoEl && canvasEl && videoEnabled) {
                 const ctx = canvasEl.getContext('2d', { willReadFrequently: true });
                 frameIntervalRef.current = window.setInterval(() => {
                     if (!ctx) return;
@@ -354,6 +367,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   };
   
   const handleEndChat = () => {
+    setChatPaused(false);
     stopConversation();
   };
 
@@ -361,6 +375,74 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     stopConversation();
     onClose();
   };
+
+  const toggleVideo = useCallback(async () => {
+    if (!mediaStreamRef.current) {
+      setVideoEnabled(v => !v);
+      return;
+    }
+    if (videoEnabled) {
+      // Turn off video: stop tracks and stop sending frames
+      if (frameIntervalRef.current) {
+        window.clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      mediaStreamRef.current.getVideoTracks().forEach(t => t.stop());
+      setVideoEnabled(false);
+    } else {
+      // Turn on video: request a new video track and add to stream
+      try {
+        const vidStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: selectedVideoDeviceId && selectedVideoDeviceId !== 'default' ? { exact: selectedVideoDeviceId } : undefined,
+            width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }
+          } as MediaTrackConstraints
+        });
+        const vTrack = vidStream.getVideoTracks()[0];
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.addTrack(vTrack);
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStreamRef.current;
+        }
+        // Restart frame sending
+        const videoEl = videoRef.current;
+        const canvasEl = canvasRef.current;
+        if (videoEl && canvasEl) {
+          const ctx = canvasEl.getContext('2d', { willReadFrequently: true });
+          frameIntervalRef.current = window.setInterval(() => {
+            if (!ctx) return;
+            canvasEl.width = videoEl.videoWidth;
+            canvasEl.height = videoEl.videoHeight;
+            ctx.drawImage(videoEl, 0, 0, videoEl.videoWidth, videoEl.videoHeight);
+            canvasEl.toBlob(async (blob) => {
+              if (blob && sessionPromiseRef.current) {
+                const base64Data = await blobToBase64(blob);
+                sessionPromiseRef.current?.then((session) => {
+                  session.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } });
+                });
+              }
+            }, 'image/jpeg', 0.8);
+          }, 1000 / 5);
+        }
+        setVideoEnabled(true);
+      } catch (e) {
+        console.error('Failed to enable video:', e);
+        alert('Could not enable camera. Please check permissions.');
+      }
+    }
+  }, [videoEnabled, selectedVideoDeviceId]);
+
+  const toggleChat = useCallback(async () => {
+    if (connectionState === 'connected' || connectionState === 'connecting') {
+      stopConversation('closed');
+      setChatPaused(true);
+      setModalView('chat');
+    } else {
+      setChatPaused(false);
+      await startConversation();
+    }
+  }, [connectionState, startConversation, stopConversation]);
 
   // --- Accessibility ---
   useEffect(() => {
@@ -373,11 +455,36 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       if (e.key.toLowerCase() === 'v') {
         setIsVoiceActive(v => !v);
       }
+      // Hotkeys: Shift+M (next mic), Shift+C (next camera), Shift+V (toggle video), Shift+P (pause/resume chat)
+      if (e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+        if (audioDevices.length > 0) {
+          const idx = Math.max(0, audioDevices.findIndex(d => d.deviceId === selectedAudioDeviceId));
+          const next = audioDevices[(idx + 1) % audioDevices.length];
+          setSelectedAudioDeviceId(next.deviceId);
+          localStorage.setItem('marz.audioDeviceId', next.deviceId);
+          applySelectedDevices();
+        }
+      }
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+        if (videoDevices.length > 0) {
+          const idx = Math.max(0, videoDevices.findIndex(d => d.deviceId === selectedVideoDeviceId));
+          const next = videoDevices[(idx + 1) % videoDevices.length];
+          setSelectedVideoDeviceId(next.deviceId);
+          localStorage.setItem('marz.videoDeviceId', next.deviceId);
+          applySelectedDevices();
+        }
+      }
+      if (e.shiftKey && (e.key === 'V')) {
+        toggleVideo();
+      }
+      if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+        toggleChat();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, handleClose]);
+  }, [isOpen, handleClose, audioDevices, videoDevices, selectedAudioDeviceId, selectedVideoDeviceId, applySelectedDevices, toggleVideo, toggleChat]);
 
   // When modal opens, try to list devices (may require permission granted)
   useEffect(() => {
@@ -413,6 +520,15 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     firstElement?.focus();
 
     return () => node.removeEventListener('keydown', handleTabKeyPress);
+  }, [isOpen]);
+
+  // Load persisted device selections on open
+  useEffect(() => {
+    if (!isOpen) return;
+    const savedMic = localStorage.getItem('marz.audioDeviceId');
+    const savedCam = localStorage.getItem('marz.videoDeviceId');
+    if (savedMic) setSelectedAudioDeviceId(savedMic);
+    if (savedCam) setSelectedVideoDeviceId(savedCam);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -457,19 +573,29 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
                     </div>
                 </div>
             </header>
-            <main className="flex-1 p-3 overflow-hidden">
+      <main className="flex-1 p-3 overflow-hidden">
                 <TranscriptionDisplay history={transcriptionHistory} currentUserText={currentInput} currentModelText={currentOutput} />
             </main>
-            <footer className="p-3 border-t border-slate-700/50 flex justify-center items-center space-x-4">
+      <footer className="p-3 border-t border-slate-700/50 flex justify-center items-center space-x-4">
+         {/* Mic level meter */}
+         <div className="w-24 h-2 bg-slate-700 rounded-full overflow-hidden" aria-label="Microphone level meter">
+           <div className={`h-full ${isMuted ? 'bg-slate-500' : 'bg-green-400'} transition-[width] duration-100`} style={{ width: `${Math.min(100, Math.round(micLevel * 150))}%` }} />
+         </div>
                  <button onClick={() => setIsMuted(m => !m)} className={`p-3 rounded-full transition-colors ${isMuted ? 'bg-slate-600 text-white' : 'bg-slate-700 text-green-400'}`} aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}>
                     {isMuted ? <MicOffIcon className="w-6 h-6"/> : <MicOnIcon className="w-6 h-6"/>}
                 </button>
-                <button onClick={handleEndChat} className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors" aria-label="End conversation">
-                    <EndCallIcon className="w-8 h-8"/>
-                </button>
+        <button onClick={toggleChat} className={`p-3 rounded-full ${chatPaused || connectionState !== 'connected' ? 'bg-green-700 hover:bg-green-600' : 'bg-yellow-600 hover:bg-yellow-500'} text-white transition-colors`} aria-label={chatPaused || connectionState !== 'connected' ? 'Start chat' : 'Pause chat'}>
+          {chatPaused || connectionState !== 'connected' ? <PlayIcon className="w-6 h-6"/> : <PauseIcon className="w-6 h-6"/>}
+        </button>
+        <button onClick={handleEndChat} className="p-3 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors" aria-label="End conversation">
+          <EndCallIcon className="w-6 h-6"/>
+        </button>
                 <button onClick={() => setIsVoiceActive(v => !v)} className={`p-3 rounded-full transition-colors ${isVoiceActive ? 'bg-slate-700 text-purple-400' : 'bg-slate-600 text-white'}`} aria-label={isVoiceActive ? "Disable Marz's voice" : "Enable Marz's voice"}>
                     {isVoiceActive ? <VoiceOnIcon className="w-6 h-6"/> : <VoiceOffIcon className="w-6 h-6"/>}
                 </button>
+        <button onClick={toggleVideo} className={`p-3 rounded-full transition-colors ${videoEnabled ? 'bg-slate-700 text-blue-400' : 'bg-slate-600 text-white'}`} aria-label={videoEnabled ? 'Disable video' : 'Enable video'}>
+          {videoEnabled ? <VideoOnIcon className="w-6 h-6"/> : <VideoOffIcon className="w-6 h-6"/>}
+        </button>
             </footer>
         </div>
     </div>

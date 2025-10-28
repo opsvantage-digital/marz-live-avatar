@@ -25,3 +25,10 @@ View your app in AI Studio: https://ai.studio/apps/drive/1mR9QjwnK1bnB8Fw_dFSyvn
 - Voice can be toggled on/off in the UI (or press V). Audio is always requested from the server for reliability; when voice is off, playback is muted locally.
 - You can switch Avatar theme (Light/Dark) in Settings to immediately see a visual change.
  - You can choose your microphone and camera in Settings. Click Refresh Devices to pick new devices, then Apply to switch during a live session.
+
+### Hotkeys
+- V: Toggle AI voice playback
+- Shift+M: Next microphone
+- Shift+C: Next camera
+- Shift+V: Toggle video on/off
+- Shift+P: Pause/Resume chat
