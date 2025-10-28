@@ -844,10 +844,9 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       <div 
         ref={modalRef}
         className={`modal-container ${isOpen ? 'open' : ''} bg-slate-900/80 backdrop-blur-lg border border-slate-700 rounded-2xl shadow-2xl shadow-purple-900/50
-          w-[calc(100%-2rem)] h-[90vh] max-w-md max-h-[700px]
-          fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 
-          sm:top-auto sm:left-auto sm:bottom-4 sm:right-4 sm:translate-x-0 sm:translate-y-0
-          sm:w-96 sm:h-auto sm:max-h-[80vh]
+          fixed inset-0 w-full h-full max-w-full max-h-full p-0 m-0 overflow-y-auto z-50
+          flex flex-col
+          sm:top-auto sm:left-auto sm:bottom-4 sm:right-4 sm:inset-auto sm:w-96 sm:h-auto sm:max-h-[80vh] sm:rounded-2xl sm:translate-x-0 sm:translate-y-0 sm:m-0
         `}
         role="dialog"
         aria-modal="true"
