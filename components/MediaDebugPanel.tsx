@@ -198,11 +198,11 @@ const MediaDebugPanel: React.FC<MediaDebugProps> = ({ onClose }) => {
                   onClick={async () => {
                     try {
                       await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-                      alert('Permissions granted! Re-running diagnostics...');
+                      setError('Permissions granted! Re-running diagnostics...');
                       runDiagnostics();
                     } catch (err: any) {
                       const mediaError = parseMediaError(err);
-                      alert(`Permission request failed:\n${mediaError.message}\n\n${mediaError.troubleshooting.join('\n')}`);
+                      setError(`Permission request failed:\n${mediaError.message}\n\n${mediaError.troubleshooting.join('\n')}`);
                     }
                   }}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md"

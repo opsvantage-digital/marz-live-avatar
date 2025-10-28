@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: Custom styles */
+body {
+  font-family: 'Orbitron', sans-serif;
+}

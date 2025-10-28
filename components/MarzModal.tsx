@@ -159,7 +159,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
         videoRef.current.srcObject = stream;
       }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.GEMINI_API_KEY });
       
       inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });

@@ -1,5 +1,27 @@
+
 import React, { useState } from 'react';
 import MarzModal from './components/MarzModal';
+
+const services = [
+  {
+    title: "Smart Wallet Onboarding",
+    description: "Begin your journey with gasless onboarding and emotionally intelligent guidance.",
+    button: "Activate Wallet",
+    link: "/wallet-onboarding", // route or external link
+  },
+  {
+    title: "Crypto Sentinel",
+    description: "Protect your assets with Marz’s watchful eye and legacy-driven smart contracts.",
+    button: "Explore Sentinel",
+    link: "/sentinel",
+  },
+  {
+    title: "Voice Companion",
+    description: "Let Marz speak with clarity and care, powered by Azure’s Live Voice API.",
+    button: "Awaken Voice",
+    link: "/voice",
+  },
+];
 
 const App: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);

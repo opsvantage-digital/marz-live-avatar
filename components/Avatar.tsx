@@ -32,6 +32,14 @@ const Avatar: React.FC<AvatarProps> = ({ isTalking, isConnected, imageUrl, theme
     setImageLoaded(false);
   }, [imageUrl]);
 
+  // If image fails, always fallback to generated avatar (never imgbb or broken)
+  useEffect(() => {
+    if (imageError) {
+      // Use a generated fallback avatar
+      setImageLoaded(true);
+    }
+  }, [imageError]);
+
   const baseRing = theme === 'dark' ? 'ring-2 ring-purple-500/40' : 'ring-2 ring-amber-300/60';
   const imgFilter = theme === 'dark' ? 'brightness-95 contrast-110' : 'brightness-110 contrast-105';
   const containerClasses = `relative w-24 h-24 rounded-full transition-all duration-500 ease-in-out ${baseRing}
