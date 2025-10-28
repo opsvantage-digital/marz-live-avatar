@@ -1,5 +1,5 @@
 import './index.css';
-import CTACards from './CTACards';
+
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
