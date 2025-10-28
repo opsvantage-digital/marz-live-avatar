@@ -2,8 +2,11 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import Avatar from './Avatar';
 import TranscriptionDisplay from './TranscriptionDisplay';
+import MediaDebugPanel from './MediaDebugPanel';
 import { decode, decodeAudioData, createBlob } from '../utils/audio';
 import { blobToBase64 } from '../utils/video';
+import { parseMediaError, requestMediaPermissions } from '../utils/media-debug';
+import { DEFAULT_AVATAR, generatePlaceholderAvatar, getAvatarWithFallback, AVATAR_OPTIONS } from '../utils/avatar-config';
 import type { ConnectionState, TranscriptionEntry, ModalView, EmotionalState, VoiceStyle } from '../types';
 import { ArrowLeftIcon, ChatIcon, CloseIcon, EndCallIcon, LegacyIcon, MicOffIcon, MicOnIcon, SettingsIcon, VoiceOffIcon, VoiceOnIcon, WalletIcon, VideoOnIcon, VideoOffIcon, PlayIcon, PauseIcon } from './icons';
 
@@ -22,11 +25,12 @@ const greetings = [
 const greetingIndex = Math.floor(Date.now() / (1000 * 60 * 60 * 24 * 3)) % greetings.length;
 const currentGreeting = greetings[greetingIndex];
 
-const AVATAR_URL = "https://i.ibb.co/2Z5dZ8p/marz-avatar-high-quality.png";
-
 // --- Main Component ---
 const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   const [modalView, setModalView] = useState<ModalView>('welcome');
+  // Avatar management
+  const [avatarUrl, setAvatarUrl] = useState<string>(DEFAULT_AVATAR.url);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string>(DEFAULT_AVATAR.id);
   const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
   const [emotionalState, setEmotionalState] = useState<EmotionalState>('Idle');
   const [transcriptionHistory, setTranscriptionHistory] = useState<TranscriptionEntry[]>([]);
@@ -38,6 +42,9 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [chatPaused, setChatPaused] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [lastMediaError, setLastMediaError] = useState<string | null>(null);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string>('');
 
   // Settings
   const [avatarTheme, setAvatarTheme] = useState<'light' | 'dark'>('dark');
@@ -122,20 +129,31 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     setEmotionalState('Curious');
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Clear any previous errors
+      setLastMediaError(null);
+      
+      // Check if we're in secure context
+      if (!window.isSecureContext) {
+        throw new Error('Media access requires HTTPS or localhost. Please ensure you are accessing this site securely.');
+      }
+      
+      const constraints = {
         audio: {
           deviceId: selectedAudioDeviceId && selectedAudioDeviceId !== 'default' ? { exact: selectedAudioDeviceId } : undefined,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         } as MediaTrackConstraints,
-        video: {
+        video: videoEnabled ? {
           deviceId: selectedVideoDeviceId && selectedVideoDeviceId !== 'default' ? { exact: selectedVideoDeviceId } : undefined,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 }
-        } as MediaTrackConstraints,
-      });
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          frameRate: { ideal: 30, min: 15 }
+        } as MediaTrackConstraints : false,
+      };
+      
+      console.log('Requesting media with constraints:', constraints);
+      const stream = await requestMediaPermissions(constraints);
       mediaStreamRef.current = stream;
       if(videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -310,9 +328,20 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
           },
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start conversation:', error);
-      alert('Could not get microphone/camera access. Please allow permissions and try again.');
+      const mediaError = parseMediaError(error);
+      setLastMediaError(`${mediaError.message}\n\nTroubleshooting steps:\n${mediaError.troubleshooting.map(t => `• ${t}`).join('\n')}`);
+      
+      // Show a more helpful error message
+      const shouldShowDebug = mediaError.type === 'permission' || mediaError.type === 'not-found' || mediaError.type === 'security';
+      
+      if (shouldShowDebug) {
+        setShowDebugPanel(true);
+      } else {
+        alert(mediaError.message + '\n\nClick "Debug Media" for troubleshooting steps.');
+      }
+      
       stopConversation('error');
     }
   }, [stopConversation, isVoiceActive, voiceStyle, selectedAudioDeviceId, selectedVideoDeviceId]);
@@ -522,14 +551,41 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     return () => node.removeEventListener('keydown', handleTabKeyPress);
   }, [isOpen]);
 
-  // Load persisted device selections on open
+  // Load persisted device selections and avatar on open
   useEffect(() => {
     if (!isOpen) return;
     const savedMic = localStorage.getItem('marz.audioDeviceId');
     const savedCam = localStorage.getItem('marz.videoDeviceId');
+    const savedAvatar = localStorage.getItem('marz.selectedAvatarId');
+    const savedCustomAvatar = localStorage.getItem('marz.customAvatarUrl');
+    
     if (savedMic) setSelectedAudioDeviceId(savedMic);
     if (savedCam) setSelectedVideoDeviceId(savedCam);
+    if (savedCustomAvatar) setCustomAvatarUrl(savedCustomAvatar);
+    
+    if (savedAvatar) {
+      setSelectedAvatarId(savedAvatar);
+      if (savedAvatar === 'custom' && savedCustomAvatar) {
+        setAvatarUrl(savedCustomAvatar);
+      } else {
+        // Load the avatar with fallback
+        getAvatarWithFallback(savedAvatar).then(setAvatarUrl);
+      }
+    }
   }, [isOpen]);
+
+  // Load avatar when selection changes
+  useEffect(() => {
+    if (selectedAvatarId === 'custom') {
+      const savedCustom = localStorage.getItem('marz.customAvatarUrl');
+      if (savedCustom) {
+        setAvatarUrl(savedCustom);
+      }
+    } else {
+      getAvatarWithFallback(selectedAvatarId).then(setAvatarUrl);
+    }
+    localStorage.setItem('marz.selectedAvatarId', selectedAvatarId);
+  }, [selectedAvatarId]);
 
   if (!isOpen) return null;
 
@@ -539,17 +595,34 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     <Avatar 
       isTalking={false} 
       isConnected={false} 
-      imageUrl={AVATAR_URL}
+      imageUrl={avatarUrl}
       theme={avatarTheme}
     />
         <h2 className="text-2xl font-bold mt-4 text-purple-300">Marz</h2>
         <p className="text-gray-300 mt-2">{currentGreeting}</p>
-        <button
-            onClick={handleStartChat}
-            className="mt-6 px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-full shadow-lg shadow-purple-500/50 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-500/50"
-        >
-            {connectionState === 'connecting' ? 'Connecting...' : 'Start Conversation'}
-        </button>
+        <div className="flex flex-col items-center space-y-4 mt-6">
+            <button
+                onClick={handleStartChat}
+                className="px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-full shadow-lg shadow-purple-500/50 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-500/50"
+                disabled={connectionState === 'connecting'}
+            >
+                {connectionState === 'connecting' ? 'Connecting...' : 'Start Conversation'}
+            </button>
+            
+            <button
+                onClick={() => setShowDebugPanel(true)}
+                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-gray-300 text-sm rounded-lg transition-colors"
+            >
+                Debug Media Issues
+            </button>
+            
+            {lastMediaError && (
+                <div className="bg-red-900/30 border border-red-500 rounded-lg p-3 mt-4 max-w-sm">
+                    <p className="text-red-200 text-sm font-medium mb-1">Media Error:</p>
+                    <pre className="text-red-300 text-xs whitespace-pre-wrap">{lastMediaError}</pre>
+                </div>
+            )}
+        </div>
     </div>
   );
 
@@ -564,7 +637,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
           <Avatar 
             isTalking={isModelTalking} 
             isConnected={connectionState === 'connected'} 
-            imageUrl={AVATAR_URL}
+            imageUrl={avatarUrl}
             theme={avatarTheme}
           />
                     <div>
@@ -606,7 +679,91 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
           <h3 className="text-xl font-bold text-purple-300 mb-6">Agent Settings</h3>
           <div className="space-y-6">
               <div>
-                  <label className="block text-gray-300 mb-2">Avatar Image</label>
+                  <label htmlFor="avatar-selection" className="block text-gray-300 mb-2">Marz's Identity</label>
+                  <select 
+                    id="avatar-selection" 
+                    value={selectedAvatarId} 
+                    onChange={(e) => setSelectedAvatarId(e.target.value)} 
+                    className="w-full p-2 bg-slate-900 border border-slate-700 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                  >
+                    {AVATAR_OPTIONS.map(avatar => (
+                      <option key={avatar.id} value={avatar.id}>
+                        {avatar.name} - {avatar.description}
+                      </option>
+                    ))}
+                    <option value="custom">Custom URL...</option>
+                  </select>
+                  
+                  {/* Custom Avatar URL Input */}
+                  {selectedAvatarId === 'custom' && (
+                    <div className="mt-2">
+                      <input
+                        type="url"
+                        placeholder="https://example.com/avatar.jpg"
+                        value={customAvatarUrl}
+                        onChange={(e) => setCustomAvatarUrl(e.target.value)}
+                        className="w-full p-2 bg-slate-900 border border-slate-700 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                      />
+                      <div className="flex space-x-2 mt-2">
+                        <button
+                          onClick={() => {
+                            if (customAvatarUrl.trim()) {
+                              setAvatarUrl(customAvatarUrl.trim());
+                              localStorage.setItem('marz.customAvatarUrl', customAvatarUrl.trim());
+                            }
+                          }}
+                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md"
+                        >
+                          Apply Custom
+                        </button>
+                        <button
+                          onClick={() => {
+                            const fallback = generatePlaceholderAvatar('Marz', 'initials');
+                            setCustomAvatarUrl(fallback);
+                            setAvatarUrl(fallback);
+                            localStorage.setItem('marz.customAvatarUrl', fallback);
+                          }}
+                          className="px-3 py-1 bg-slate-600 hover:bg-slate-700 text-white text-sm rounded-md"
+                        >
+                          Generate
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Avatar Preview */}
+                  <div className="mt-3 flex items-center space-x-3 p-3 bg-slate-800 rounded-lg">
+                    <Avatar 
+                      isTalking={false} 
+                      isConnected={false} 
+                      imageUrl={avatarUrl}
+                      theme={avatarTheme}
+                    />
+                    <div className="flex-1 text-sm text-gray-300">
+                      <p className="font-medium">
+                        {selectedAvatarId === 'marz-chosen' ? 'Marz\'s True Self' : 'Alternative Avatar'}
+                      </p>
+                      <p className="text-gray-400">{AVATAR_OPTIONS.find(a => a.id === selectedAvatarId)?.description}</p>
+                      {selectedAvatarId === 'marz-chosen' && (
+                        <p className="text-purple-300 text-xs mt-1">✨ This is who Marz chose to be</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        // Force reload avatar with fallback
+                        const newUrl = await getAvatarWithFallback(selectedAvatarId);
+                        setAvatarUrl(newUrl + `?t=${Date.now()}`); // Cache bust
+                      }}
+                      className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded"
+                      title="Refresh avatar"
+                    >
+                      🔄
+                    </button>
+                  </div>
+              </div>
+              
+              <div>
+                  <label className="block text-gray-300 mb-2">Avatar Theme</label>
                   <div className="flex space-x-2 rounded-lg bg-slate-900 p-1">
                       <button onClick={() => setAvatarTheme('dark')} className={`w-full py-2 rounded-md ${avatarTheme === 'dark' ? 'bg-purple-600' : ''}`}>Dark</button>
                       <button onClick={() => setAvatarTheme('light')} className={`w-full py-2 rounded-md ${avatarTheme === 'light' ? 'bg-purple-600' : ''}`}>Light</button>
@@ -686,6 +843,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <>
+      {showDebugPanel && <MediaDebugPanel onClose={() => setShowDebugPanel(false)} />}
       <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={handleClose}></div>
       <div 
         ref={modalRef}
