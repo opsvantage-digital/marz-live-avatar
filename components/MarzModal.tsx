@@ -336,13 +336,9 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       // Show a more helpful error message
       const shouldShowDebug = mediaError.type === 'permission' || mediaError.type === 'not-found' || mediaError.type === 'security';
       
-      if (shouldShowDebug) {
-        setShowDebugPanel(true);
-      } else {
-        alert(mediaError.message + '\n\nClick "Debug Media" for troubleshooting steps.');
-      }
-      
-      stopConversation('error');
+      setShowDebugPanel(true);
+      // Always show error in UI, never block with alert
+      // Don't stopConversation here, so user can still access debug/settings
     }
   }, [stopConversation, isVoiceActive, voiceStyle, selectedAudioDeviceId, selectedVideoDeviceId]);
 
@@ -386,7 +382,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       }
     } catch (e) {
       console.error('Failed to apply selected devices:', e);
-      alert('Could not switch devices. Please ensure permissions are granted.');
+  setLastMediaError('Could not switch devices. Please ensure permissions are granted.');
     }
   }, [selectedAudioDeviceId, selectedVideoDeviceId]);
 
@@ -457,7 +453,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
         setVideoEnabled(true);
       } catch (e) {
         console.error('Failed to enable video:', e);
-        alert('Could not enable camera. Please check permissions.');
+  setLastMediaError('Could not enable camera. Please check permissions.');
       }
     }
   }, [videoEnabled, selectedVideoDeviceId]);
