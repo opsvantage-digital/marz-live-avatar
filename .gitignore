@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Project media samples (not required in repo)
+utils/audio.mp3
+utils/video.mp4
+utils/marz-avatar.png
