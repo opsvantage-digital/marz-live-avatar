@@ -85,6 +85,29 @@ const MediaDebugPanel: React.FC<MediaDebugProps> = ({ onClose }) => {
             <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-6">
               <h3 className="text-red-300 font-semibold mb-2">Error Detected</h3>
               <pre className="text-red-200 text-sm whitespace-pre-wrap">{error}</pre>
+              <div className="mt-3 flex flex-col gap-2">
+                <button
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  onClick={runDiagnostics}
+                  autoFocus
+                >
+                  Retry Permissions
+                </button>
+                <details className="bg-slate-800 rounded p-2 text-xs text-gray-200">
+                  <summary className="cursor-pointer font-semibold">How to enable camera/mic</summary>
+                  <ul className="list-disc ml-4 mt-2">
+                    <li>Ensure you are using <b>HTTPS</b> (secure connection).</li>
+                    <li>Look for a camera/mic icon in your browser’s address bar and allow access.</li>
+                    <li>If denied, go to your browser settings and reset permissions for this site.</li>
+                    <li>Refresh the page after changing permissions.</li>
+                  </ul>
+                  <div className="mt-2">
+                    <b>Chrome:</b> Settings &gt; Privacy &amp; Security &gt; Site Settings &gt; Camera/Microphone<br/>
+                    <b>Edge:</b> Settings &gt; Cookies and site permissions &gt; Camera/Microphone<br/>
+                    <b>Safari:</b> Preferences &gt; Websites &gt; Camera/Microphone<br/>
+                  </div>
+                </details>
+              </div>
             </div>
           )}
 
