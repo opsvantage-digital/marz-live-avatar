@@ -55,6 +55,8 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   const currentInputRef = useRef('');
   const currentOutputRef = useRef('');
   const hasAudioInTurnRef = useRef(false);
+  const isMutedRef = useRef(isMuted);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
   // --- Core Logic ---
 
@@ -63,6 +65,11 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       sessionPromiseRef.current.then(session => session.close());
       sessionPromiseRef.current = null;
     }
+    // Stop any scheduled output audio
+    audioSourcesRef.current.forEach((src) => {
+      try { src.stop(); } catch {}
+    });
+    audioSourcesRef.current.clear();
     if (frameIntervalRef.current) {
         window.clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
@@ -101,7 +108,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
         videoRef.current.srcObject = stream;
       }
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
       
       inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -116,7 +123,8 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       sessionPromiseRef.current = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
-          responseModalities: isVoiceActive ? [Modality.AUDIO] : [],
+          // Always request audio for reliable real-time session; mute playback locally when voice is disabled
+          responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           speechConfig: {
@@ -132,7 +140,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
             scriptProcessorRef.current = scriptProcessor;
 
             scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-              if (isMuted) return;
+              if (isMutedRef.current) return;
               const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
               const pcmBlob = createBlob(inputData);
               if (sessionPromiseRef.current) {
@@ -184,10 +192,8 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
               
               if (emotionMatch) {
                 const newEmotion = emotionMatch[1] as EmotionalState;
-                // Update the emotional state if it's different
-                if (emotionalState !== newEmotion) {
-                  setEmotionalState(newEmotion);
-                }
+                // Use functional update to avoid stale closure
+                setEmotionalState(prev => (prev === newEmotion ? prev : newEmotion));
                 // For display, show the output with the tag removed
                 setCurrentOutput(currentOutputRef.current.replace(emotionMatch[0], ''));
               } else {
@@ -242,7 +248,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
                  audioSourcesRef.current.delete(source);
                  if(audioSourcesRef.current.size === 0) {
                      setIsModelTalking(false);
-                     setEmotionalState(s => s === 'Idle' ? 'Calm' : s);
+           setEmotionalState(s => s === 'Idle' ? 'Calm' : s);
                  }
               });
 
@@ -265,7 +271,7 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       alert('Could not get microphone/camera access. Please allow permissions and try again.');
       stopConversation('error');
     }
-  }, [stopConversation, isMuted, isVoiceActive, voiceStyle, emotionalState]);
+  }, [stopConversation, isVoiceActive, voiceStyle]);
 
   const handleStartChat = () => {
     setModalView('chat');
@@ -333,11 +339,12 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
   // --- Render methods ---
   const renderWelcome = () => (
     <div className="flex flex-col items-center justify-center text-center p-6 h-full">
-        <Avatar 
-            isTalking={false} 
-            isConnected={false} 
-            imageUrl={AVATAR_URL}
-        />
+    <Avatar 
+      isTalking={false} 
+      isConnected={false} 
+      imageUrl={AVATAR_URL}
+      theme={avatarTheme}
+    />
         <h2 className="text-2xl font-bold mt-4 text-purple-300">Marz</h2>
         <p className="text-gray-300 mt-2">{currentGreeting}</p>
         <button
@@ -357,11 +364,12 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
         <div className="relative z-10 flex flex-col h-full bg-black/30">
             <header className="flex items-center justify-between p-3 border-b border-slate-700/50">
                 <div className="flex items-center space-x-3">
-                    <Avatar 
-                        isTalking={isModelTalking} 
-                        isConnected={connectionState === 'connected'} 
-                        imageUrl={AVATAR_URL}
-                    />
+          <Avatar 
+            isTalking={isModelTalking} 
+            isConnected={connectionState === 'connected'} 
+            imageUrl={AVATAR_URL}
+            theme={avatarTheme}
+          />
                     <div>
                         <h3 className="font-bold text-purple-300">Marz</h3>
                         <p className="text-sm text-green-400 capitalize">{emotionalState}</p>
