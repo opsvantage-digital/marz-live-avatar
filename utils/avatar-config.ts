@@ -12,7 +12,7 @@ export const AVATAR_OPTIONS: AvatarConfig[] = [
   {
     id: 'marz-chosen',
     name: 'Marz',
-  url: '/assets/avatar-headshot.png',
+  url: 'https://p00zti7jskvmsw7k.public.blob.vercel-storage.com/marz-avatar.png',
     fallbackColor: 'from-purple-600 to-pink-600',
     description: 'Marz\'s chosen identity - this is who she is'
   },

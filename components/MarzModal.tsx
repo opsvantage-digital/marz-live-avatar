@@ -1,6 +1,4 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import BrandIcon from '../assets/brand-icon.png'; // Place the icon in assets folder
-import BrandLogo from '../assets/brand-logo.png'; // Place the logo in assets folder
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import Avatar from './Avatar';
 import TranscriptionDisplay from './TranscriptionDisplay';
@@ -50,17 +48,6 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
 
   // Settings
   const [avatarTheme, setAvatarTheme] = useState<'light' | 'dark'>('dark');
-
-  // Listen for theme toggle from Avatar
-  useEffect(() => {
-    const handler = (e: any) => {
-      if (e.detail === 'light' || e.detail === 'dark') {
-        setAvatarTheme(e.detail);
-      }
-    };
-    window.addEventListener('marz-theme-toggle', handler);
-    return () => window.removeEventListener('marz-theme-toggle', handler);
-  }, []);
   const [voiceStyle, setVoiceStyle] = useState<VoiceStyle>('Zephyr');
 
   // Refs
@@ -596,10 +583,6 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
     localStorage.setItem('marz.selectedAvatarId', selectedAvatarId);
   }, [selectedAvatarId]);
 
-
-  // Responsive modal style
-  // On mobile: full screen, centered, no cropping
-  // On desktop: fixed size, centered
   if (!isOpen) return null;
 
   // --- Render methods ---
@@ -610,7 +593,6 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       isConnected={false} 
       imageUrl={avatarUrl}
       theme={avatarTheme}
-      showThemeToggle={true}
     />
         <h2 className="text-2xl font-bold mt-4 text-purple-300">Marz</h2>
         <p className="text-gray-300 mt-2">{currentGreeting}</p>
@@ -634,29 +616,6 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
                 <div className="bg-red-900/30 border border-red-500 rounded-lg p-3 mt-4 max-w-sm">
                     <p className="text-red-200 text-sm font-medium mb-1">Media Error:</p>
                     <pre className="text-red-300 text-xs whitespace-pre-wrap">{lastMediaError}</pre>
-                    <div className="mt-3 flex flex-col gap-2">
-                      <button
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
-                        onClick={() => startConversation()}
-                        autoFocus
-                      >
-                        Retry Permissions
-                      </button>
-                      <details className="bg-slate-800 rounded p-2 text-xs text-gray-200">
-                        <summary className="cursor-pointer font-semibold">How to enable camera/mic</summary>
-                        <ul className="list-disc ml-4 mt-2">
-                          <li>Ensure you are using <b>HTTPS</b> (secure connection).</li>
-                          <li>Look for a camera/mic icon in your browser’s address bar and allow access.</li>
-                          <li>If denied, go to your browser settings and reset permissions for this site.</li>
-                          <li>Refresh the page after changing permissions.</li>
-                        </ul>
-                        <div className="mt-2">
-                          <b>Chrome:</b> Settings &gt; Privacy &amp; Security &gt; Site Settings &gt; Camera/Microphone<br/>
-                          <b>Edge:</b> Settings &gt; Cookies and site permissions &gt; Camera/Microphone<br/>
-                          <b>Safari:</b> Preferences &gt; Websites &gt; Camera/Microphone<br/>
-                        </div>
-                      </details>
-                    </div>
                 </div>
             )}
         </div>
@@ -676,7 +635,6 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
             isConnected={connectionState === 'connected'} 
             imageUrl={avatarUrl}
             theme={avatarTheme}
-            showThemeToggle={true}
           />
                     <div>
                         <h3 className="font-bold text-purple-300">Marz</h3>
@@ -776,7 +734,6 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
                       isConnected={false} 
                       imageUrl={avatarUrl}
                       theme={avatarTheme}
-                      showThemeToggle={true}
                     />
                     <div className="flex-1 text-sm text-gray-300">
                       <p className="font-medium">
@@ -886,44 +843,29 @@ const MarzModal: React.FC<MarzModalProps> = ({ isOpen, onClose }) => {
       <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={handleClose}></div>
       <div 
         ref={modalRef}
-        className={`modal-container ${isOpen ? 'open' : ''} bg-slate-900/80 backdrop-blur-lg border border-slate-700 shadow-2xl shadow-purple-900/50
-          fixed inset-0 w-full h-full max-w-full max-h-full p-0 m-0 overflow-y-auto z-50 flex flex-col
+        className={`modal-container ${isOpen ? 'open' : ''} bg-slate-900/80 backdrop-blur-lg border border-slate-700 rounded-2xl shadow-2xl shadow-purple-900/50
+          fixed inset-0 w-full h-full max-w-full max-h-full p-0 m-0 overflow-y-auto z-50
+          flex flex-col
           sm:top-auto sm:left-auto sm:bottom-4 sm:right-4 sm:inset-auto sm:w-96 sm:h-auto sm:max-h-[80vh] sm:rounded-2xl sm:translate-x-0 sm:translate-y-0 sm:m-0
-          rounded-none sm:rounded-2xl font-sans
         `}
-        style={{
-          borderRadius: '0',
-          maxWidth: '100vw',
-          maxHeight: '100vh',
-          left: 0,
-          top: 0,
-          right: 0,
-          bottom: 0,
-        }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="marz-modal-title"
       >
         <div className="flex flex-col h-full">
-            <header className="flex items-center justify-between p-2 border-b border-slate-700" style={{fontFamily: 'Orbitron, sans-serif'}}>
-                <div className="flex items-center gap-2">
-                  <img src={BrandIcon} alt="OpsVantage Icon" className="w-8 h-8" />
-                  {modalView !== 'welcome' && modalView !== 'chat' ? (
+            <header className="flex items-center justify-between p-2 text-gray-300 border-b border-slate-700">
+                {modalView !== 'welcome' && modalView !== 'chat' ? (
                      <button onClick={() => setModalView('chat')} className="p-2 rounded-full hover:bg-slate-700" aria-label="Back to chat">
                          <ArrowLeftIcon className="w-5 h-5"/>
                      </button>
-                  ): <div className="w-9 h-9"></div>}
-                </div>
-                <div className="flex flex-col items-center flex-1">
-                  <img src={BrandLogo} alt="OpsVantage Digital" className="h-7 object-contain mx-auto" style={{maxWidth: '220px'}} />
-                  <h2 id="marz-modal-title" className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-green-400 to-yellow-400 text-lg sm:text-xl" style={{fontFamily: 'Orbitron, sans-serif'}}>Marz AI</h2>
-                </div>
+                ): <div className="w-9 h-9"></div>}
+                <h2 id="marz-modal-title" className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">Marz AI</h2>
                 <button onClick={handleClose} className="p-2 rounded-full hover:bg-slate-700" aria-label="Close modal">
                     <CloseIcon className="w-5 h-5"/>
                 </button>
             </header>
 
-            <main className="flex-1 overflow-y-auto font-sans" style={{fontFamily: 'Inter, sans-serif'}}>
+            <main className="flex-1 overflow-y-auto">
                 {renderContent()}
             </main>
             
